@@ -92,3 +92,10 @@ claude mcp add --user --transport stdio granola -- uv run --script ~/granola-mcp
 - Strict Pydantic validation (fail fast on API changes)
 - Temp directory for exports (auto-cleanup on shutdown)
 - Follows browser-automation-mcp.py patterns
+
+## Development
+
+**Formatting:**
+```bash
+uvx ruff format .
+```

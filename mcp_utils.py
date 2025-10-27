@@ -14,17 +14,17 @@ class DualLogger:
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     async def info(self, msg: str):
-        print(f"[{self._timestamp()}] [INFO] {msg}")
+        print(f'[{self._timestamp()}] [INFO] {msg}')
         await self.ctx.info(msg)
 
     async def debug(self, msg: str):
-        print(f"[{self._timestamp()}] [DEBUG] {msg}")
+        print(f'[{self._timestamp()}] [DEBUG] {msg}')
         await self.ctx.debug(msg)
 
     async def warning(self, msg: str):
-        print(f"[{self._timestamp()}] [WARNING] {msg}")
+        print(f'[{self._timestamp()}] [WARNING] {msg}')
         await self.ctx.warning(msg)
 
     async def error(self, msg: str):
-        print(f"[{self._timestamp()}] [ERROR] {msg}")
+        print(f'[{self._timestamp()}] [ERROR] {msg}')
         await self.ctx.error(msg)

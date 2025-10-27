@@ -34,8 +34,10 @@ from mcp_utils import DualLogger
 # Pydantic Models - Strict Validation
 # =============================================================================
 
+
 class GranolaDocument(BaseModel):
     """Strict model for Granola document with fail-fast validation."""
+
     id: str
     title: str | None = None
     created_at: str
@@ -47,11 +49,12 @@ class GranolaDocument(BaseModel):
     google_calendar_event: dict | None = None
     transcribe: bool = False
 
-    model_config = {"extra": "allow"}  # Allow extra fields from API
+    model_config = {'extra': 'allow'}  # Allow extra fields from API
 
 
 class MeetingListItem(BaseModel):
     """Simplified meeting info for list views."""
+
     id: str
     title: str
     created_at: str
@@ -62,13 +65,15 @@ class MeetingListItem(BaseModel):
 
 class DocumentsResponse(BaseModel):
     """Response from get-documents API."""
+
     docs: list[GranolaDocument]
 
-    model_config = {"extra": "allow"}
+    model_config = {'extra': 'allow'}
 
 
 class ExportResult(BaseModel):
     """Result from export operation."""
+
     path: str
     title: str
     size_bytes: int
@@ -105,12 +110,13 @@ async def lifespan(server):
             _temp_dir.cleanup()
 
 
-mcp = FastMCP("granola", lifespan=lifespan)
+mcp = FastMCP('granola', lifespan=lifespan)
 
 
 # =============================================================================
 # Authentication
 # =============================================================================
+
 
 def get_auth_token() -> str:
     """
@@ -120,41 +126,42 @@ def get_auth_token() -> str:
         FileNotFoundError: If Granola data directory doesn't exist
         ValueError: If token data is malformed
     """
-    granola_dir = Path.home() / "Library" / "Application Support" / "Granola"
-    supabase_file = granola_dir / "supabase.json"
+    granola_dir = Path.home() / 'Library' / 'Application Support' / 'Granola'
+    supabase_file = granola_dir / 'supabase.json'
 
     if not supabase_file.exists():
         raise FileNotFoundError(
-            f"Granola auth file not found at {supabase_file}. "
-            "Is Granola installed and authenticated?"
+            f'Granola auth file not found at {supabase_file}. '
+            'Is Granola installed and authenticated?'
         )
 
     with open(supabase_file) as f:
         data = json.load(f)
 
-    if "workos_tokens" not in data:
-        raise ValueError("No workos_tokens found in Granola auth file")
+    if 'workos_tokens' not in data:
+        raise ValueError('No workos_tokens found in Granola auth file')
 
-    tokens = json.loads(data["workos_tokens"])
+    tokens = json.loads(data['workos_tokens'])
 
-    if "access_token" not in tokens:
-        raise ValueError("No access_token in workos_tokens")
+    if 'access_token' not in tokens:
+        raise ValueError('No access_token in workos_tokens')
 
-    return tokens["access_token"]
+    return tokens['access_token']
 
 
 def get_auth_headers() -> dict[str, str]:
     """Get HTTP headers with authentication."""
     token = get_auth_token()
     return {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json',
     }
 
 
 # =============================================================================
 # ProseMirror to Markdown Conversion
 # =============================================================================
+
 
 def prosemirror_to_markdown(content: dict) -> str:
     """
@@ -164,50 +171,50 @@ def prosemirror_to_markdown(content: dict) -> str:
     Falls back to plain text extraction for unknown types.
     """
     if not isinstance(content, dict):
-        return ""
+        return ''
 
-    node_type = content.get("type", "")
+    node_type = content.get('type', '')
 
     # Document root
-    if node_type == "doc":
-        children = content.get("content", [])
-        return "\n\n".join(prosemirror_to_markdown(child) for child in children)
+    if node_type == 'doc':
+        children = content.get('content', [])
+        return '\n\n'.join(prosemirror_to_markdown(child) for child in children)
 
     # Headings
-    if node_type == "heading":
-        level = content.get("attrs", {}).get("level", 1)
+    if node_type == 'heading':
+        level = content.get('attrs', {}).get('level', 1)
         text = _extract_text(content)
-        return f"{'#' * level} {text}"
+        return f'{"#" * level} {text}'
 
     # Paragraph
-    if node_type == "paragraph":
+    if node_type == 'paragraph':
         text = _extract_text(content)
-        return text if text else ""
+        return text if text else ''
 
     # Bullet list
-    if node_type == "bulletList":
-        items = content.get("content", [])
+    if node_type == 'bulletList':
+        items = content.get('content', [])
         lines = []
         for item in items:
-            if item.get("type") == "listItem":
+            if item.get('type') == 'listItem':
                 item_text = _extract_text(item)
-                lines.append(f"- {item_text}")
-        return "\n".join(lines)
+                lines.append(f'- {item_text}')
+        return '\n'.join(lines)
 
     # Ordered list
-    if node_type == "orderedList":
-        items = content.get("content", [])
+    if node_type == 'orderedList':
+        items = content.get('content', [])
         lines = []
         for i, item in enumerate(items, 1):
-            if item.get("type") == "listItem":
+            if item.get('type') == 'listItem':
                 item_text = _extract_text(item)
-                lines.append(f"{i}. {item_text}")
-        return "\n".join(lines)
+                lines.append(f'{i}. {item_text}')
+        return '\n'.join(lines)
 
     # Code block
-    if node_type == "codeBlock":
+    if node_type == 'codeBlock':
         text = _extract_text(content)
-        return f"```\n{text}\n```"
+        return f'```\n{text}\n```'
 
     # Fallback: extract text
     return _extract_text(content)
@@ -219,47 +226,43 @@ def _extract_text(node: dict) -> str:
         return node
 
     if not isinstance(node, dict):
-        return ""
+        return ''
 
     # Direct text node
-    if node.get("type") == "text":
-        text = node.get("text", "")
+    if node.get('type') == 'text':
+        text = node.get('text', '')
         # Handle marks (bold, italic, etc.)
-        marks = node.get("marks", [])
+        marks = node.get('marks', [])
         for mark in marks:
-            mark_type = mark.get("type")
-            if mark_type == "bold":
-                text = f"**{text}**"
-            elif mark_type == "italic":
-                text = f"*{text}*"
-            elif mark_type == "code":
-                text = f"`{text}`"
+            mark_type = mark.get('type')
+            if mark_type == 'bold':
+                text = f'**{text}**'
+            elif mark_type == 'italic':
+                text = f'*{text}*'
+            elif mark_type == 'code':
+                text = f'`{text}`'
         return text
 
     # Recurse through children
-    content = node.get("content", [])
+    content = node.get('content', [])
     texts = [_extract_text(child) for child in content]
 
     # Join with space for inline, newline for block
-    node_type = node.get("type", "")
-    if node_type in ["paragraph", "listItem"]:
-        return " ".join(text for text in texts if text)
+    node_type = node.get('type', '')
+    if node_type in ['paragraph', 'listItem']:
+        return ' '.join(text for text in texts if text)
     else:
-        return "".join(texts)
+        return ''.join(texts)
 
 
 # =============================================================================
 # MCP Tools
 # =============================================================================
 
-@mcp.tool(annotations=ToolAnnotations(
-    title="List Meetings",
-    readOnlyHint=True
-))
+
+@mcp.tool(annotations=ToolAnnotations(title='List Meetings', readOnlyHint=True))
 async def list_meetings(
-    limit: int = 20,
-    offset: int = 0,
-    search: str | None = None
+    limit: int = 20, offset: int = 0, search: str | None = None
 ) -> list[MeetingListItem]:
     """
     List Granola meetings with pagination and optional search.
@@ -276,13 +279,9 @@ async def list_meetings(
         limit = 100
 
     headers = get_auth_headers()
-    url = "https://api.granola.ai/v2/get-documents"
+    url = 'https://api.granola.ai/v2/get-documents'
 
-    payload = {
-        "limit": limit,
-        "offset": offset,
-        "include_last_viewed_panel": False
-    }
+    payload = {'limit': limit, 'offset': offset, 'include_last_viewed_panel': False}
 
     response = await _http_client.post(url, json=payload, headers=headers)
     response.raise_for_status()
@@ -294,32 +293,31 @@ async def list_meetings(
     for doc in data.docs:
         # Apply search filter
         if search:
-            title = doc.title or ""
+            title = doc.title or ''
             if search.lower() not in title.lower():
                 continue
 
         # Count participants
         participant_count = 0
         if doc.people and isinstance(doc.people, dict):
-            attendees = doc.people.get("attendees", [])
+            attendees = doc.people.get('attendees', [])
             participant_count = len(attendees) if isinstance(attendees, list) else 0
 
-        meetings.append(MeetingListItem(
-            id=doc.id,
-            title=doc.title or "(Untitled)",
-            created_at=doc.created_at,
-            type=doc.type,
-            has_notes=bool(doc.notes or doc.notes_markdown),
-            participant_count=participant_count
-        ))
+        meetings.append(
+            MeetingListItem(
+                id=doc.id,
+                title=doc.title or '(Untitled)',
+                created_at=doc.created_at,
+                type=doc.type,
+                has_notes=bool(doc.notes or doc.notes_markdown),
+                participant_count=participant_count,
+            )
+        )
 
     return meetings
 
 
-@mcp.tool(annotations=ToolAnnotations(
-    title="Get Meeting Notes",
-    readOnlyHint=True
-))
+@mcp.tool(annotations=ToolAnnotations(title='Get Meeting Notes', readOnlyHint=True))
 async def get_notes(document_id: str) -> str:
     """
     Get AI-generated notes for a specific meeting in Markdown format.
@@ -331,14 +329,10 @@ async def get_notes(document_id: str) -> str:
         Markdown-formatted meeting notes
     """
     headers = get_auth_headers()
-    url = "https://api.granola.ai/v2/get-documents"
+    url = 'https://api.granola.ai/v2/get-documents'
 
     # Get document with notes panel
-    payload = {
-        "limit": 100,
-        "offset": 0,
-        "include_last_viewed_panel": True
-    }
+    payload = {'limit': 100, 'offset': 0, 'include_last_viewed_panel': True}
 
     response = await _http_client.post(url, json=payload, headers=headers)
     response.raise_for_status()
@@ -353,7 +347,7 @@ async def get_notes(document_id: str) -> str:
             break
 
     if not doc:
-        raise ValueError(f"Document {document_id} not found")
+        raise ValueError(f'Document {document_id} not found')
 
     # Try notes_markdown first
     if doc.notes_markdown:
@@ -363,13 +357,10 @@ async def get_notes(document_id: str) -> str:
     if doc.notes:
         return prosemirror_to_markdown(doc.notes)
 
-    return "(No notes available for this meeting)"
+    return '(No notes available for this meeting)'
 
 
-@mcp.tool(annotations=ToolAnnotations(
-    title="Search Meetings",
-    readOnlyHint=True
-))
+@mcp.tool(annotations=ToolAnnotations(title='Search Meetings', readOnlyHint=True))
 async def search_meetings(query: str, limit: int = 20) -> list[MeetingListItem]:
     """
     Search meetings by keyword in title.
@@ -385,11 +376,11 @@ async def search_meetings(query: str, limit: int = 20) -> list[MeetingListItem]:
     return await list_meetings(limit=limit, offset=0, search=query)
 
 
-@mcp.tool(annotations=ToolAnnotations(
-    title="Export Meeting Notes",
-    readOnlyHint=False,
-    idempotentHint=False
-))
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title='Export Meeting Notes', readOnlyHint=False, idempotentHint=False
+    )
+)
 async def export_note(document_id: str, ctx: Context) -> ExportResult:
     """
     Export meeting notes to a temporary Markdown file.
@@ -404,16 +395,16 @@ async def export_note(document_id: str, ctx: Context) -> ExportResult:
         ExportResult with file path, title, and size
     """
     logger = DualLogger(ctx)
-    await logger.info(f"Exporting notes for document {document_id}")
+    await logger.info(f'Exporting notes for document {document_id}')
 
     # Get the notes
     notes = await get_notes(document_id)
 
     # Get document title
     headers = get_auth_headers()
-    url = "https://api.granola.ai/v2/get-documents"
+    url = 'https://api.granola.ai/v2/get-documents'
 
-    payload = {"limit": 100, "offset": 0, "include_last_viewed_panel": False}
+    payload = {'limit': 100, 'offset': 0, 'include_last_viewed_panel': False}
     response = await _http_client.post(url, json=payload, headers=headers)
     response.raise_for_status()
 
@@ -421,25 +412,23 @@ async def export_note(document_id: str, ctx: Context) -> ExportResult:
     doc = next((d for d in data.docs if d.id == document_id), None)
 
     if not doc:
-        raise ValueError(f"Document {document_id} not found")
+        raise ValueError(f'Document {document_id} not found')
 
-    title = doc.title or "untitled"
+    title = doc.title or 'untitled'
 
     # Create safe filename
-    safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in title)
+    safe_title = ''.join(c if c.isalnum() or c in ' -_' else '_' for c in title)
     safe_title = safe_title.strip()[:100]  # Limit length
-    filename = f"{safe_title}.md"
+    filename = f'{safe_title}.md'
 
     # Write to temp directory
     file_path = _export_dir / filename
-    file_path.write_text(notes, encoding="utf-8")
+    file_path.write_text(notes, encoding='utf-8')
 
-    await logger.info(f"Exported to {file_path}")
+    await logger.info(f'Exported to {file_path}')
 
     return ExportResult(
-        path=str(file_path),
-        title=title,
-        size_bytes=len(notes.encode("utf-8"))
+        path=str(file_path), title=title, size_bytes=len(notes.encode('utf-8'))
     )
 
 
@@ -447,6 +436,6 @@ async def export_note(document_id: str, ctx: Context) -> ExportResult:
 # Main Entry Point
 # =============================================================================
 
-if __name__ == "__main__":
-    print("Starting Granola MCP server")
+if __name__ == '__main__':
+    print('Starting Granola MCP server')
     mcp.run()
