@@ -29,6 +29,7 @@ from mcp.types import ToolAnnotations
 
 from src.helpers import (
     analyze_markdown_metadata,
+    convert_utc_to_local,
     get_auth_headers,
     prosemirror_to_markdown,
 )
@@ -154,7 +155,7 @@ async def search_meetings(
             MeetingListItem(
                 id=doc.id,
                 title=doc.title or '(Untitled)',
-                created_at=doc.created_at,
+                created_at=convert_utc_to_local(doc.created_at),
                 type=doc.type,
                 has_notes=bool(doc.notes or doc.notes_markdown),
                 participant_count=participant_count,
@@ -521,8 +522,8 @@ async def get_meeting_lists(ctx: Context) -> MeetingListsResult:
             visibility=list_info.get('visibility', ''),
             document_ids=doc_ids,
             document_count=len(doc_ids),
-            created_at=list_info.get('created_at', ''),
-            updated_at=list_info.get('updated_at', ''),
+            created_at=convert_utc_to_local(list_info.get('created_at', '')),
+            updated_at=convert_utc_to_local(list_info.get('updated_at', '')),
         )
         meeting_lists.append(meeting_list)
 
@@ -573,7 +574,7 @@ async def get_meetings(document_ids: list[str], ctx: Context) -> list[MeetingLis
             MeetingListItem(
                 id=doc.id,
                 title=doc.title or '(Untitled)',
-                created_at=doc.created_at,
+                created_at=convert_utc_to_local(doc.created_at),
                 type=doc.type,
                 has_notes=bool(doc.notes or doc.notes_markdown),
                 participant_count=participant_count,

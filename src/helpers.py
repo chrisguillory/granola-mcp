@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 
@@ -43,6 +44,38 @@ def get_auth_headers() -> dict[str, str]:
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json',
     }
+
+
+def convert_utc_to_local(utc_timestamp: str | None) -> str | None:
+    """
+    Convert UTC ISO timestamp to system local timezone.
+
+    Parses ISO 8601 UTC timestamp string, converts to system local time,
+    and returns as ISO string with timezone offset.
+
+    Args:
+        utc_timestamp: ISO 8601 timestamp string ending in 'Z' (e.g., '2025-10-16T00:05:25.376Z')
+                       or None
+
+    Returns:
+        ISO 8601 timestamp string in system local timezone (e.g., '2025-10-15T17:05:25.376-07:00')
+        or None if input is None
+
+    Example:
+        >>> convert_utc_to_local('2025-10-16T00:05:25.376Z')
+        '2025-10-15T17:05:25.376000-07:00'  # If system is in Pacific time
+    """
+    if utc_timestamp is None:
+        return None
+
+    # Parse UTC timestamp (replace 'Z' with '+00:00' for parsing)
+    utc_dt = datetime.fromisoformat(utc_timestamp.replace('Z', '+00:00'))
+
+    # Convert to system local timezone
+    local_dt = utc_dt.astimezone()
+
+    # Return as ISO format string with timezone offset
+    return local_dt.isoformat()
 
 
 def analyze_markdown_metadata(markdown: str) -> dict:
