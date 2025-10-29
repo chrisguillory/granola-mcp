@@ -2,6 +2,7 @@
 # /// script
 # requires-python = ">=3.11,<3.13"
 # dependencies = [
+#   "aiocache",
 #   "fastmcp>=2.12.5",
 #   "httpx",
 #   "pydantic>=2.0",
@@ -24,6 +25,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
+from aiocache import Cache, cached
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 
@@ -82,53 +84,33 @@ async def lifespan(server):
 mcp = FastMCP('granola', lifespan=lifespan)
 
 # =============================================================================
-# MCP Tools
+# Helper Functions
 # =============================================================================
 
 
-@mcp.tool(annotations=ToolAnnotations(title='Search Meetings', readOnlyHint=True))
-async def search_meetings(
-    query: str | None = None,
-    list_id: str | None = None,
-    limit: int = 20,
-    offset: int = 0,
-) -> list[MeetingListItem]:
+@cached(ttl=None, cache=Cache.MEMORY)
+async def _get_documents_cached(
+    limit: int, offset: int, list_id: str | None = None
+) -> list:
     """
-    Search Granola meetings with optional query, list filter, and pagination.
+    Fetch documents from API with automatic caching.
 
-    When query is None, returns all meetings (equivalent to listing all meetings).
-    When query is provided, filters meetings by title (case-insensitive).
-    When list_id is provided, filters to only meetings in that list (server-side).
-
-    Note: list_id uses API terminology ('document' internally) but refers to meeting lists.
+    Results are cached by (limit, offset, list_id) for the lifetime of the MCP server session.
+    Cache is cleared on server restart.
 
     Args:
-        query: Optional search term to filter by title (case-insensitive). None returns all meetings.
-        list_id: Optional list ID to filter meetings by list (server-side filtering)
-        limit: Maximum number of meetings to return (default 20, max 100)
-        offset: Pagination offset for retrieving additional results (default 0)
+        limit: Number of documents to fetch
+        offset: Pagination offset
+        list_id: Optional list ID filter
 
     Returns:
-        List of meetings with id, title, date, and metadata
-
-    Possible Improvements (undocumented Granola API parameters):
-        The following parameters may be supported by the Granola API but are not yet implemented:
-        - filters: Filter by date ranges, meeting status, or custom metadata
-        - sort: Specify sorting order (e.g., by date, title, or last modified)
-        - types: Filter by document/meeting type
-        - tag_ids: Filter meetings by attached tags or labels
-        - archived: Include or exclude archived meetings
-        - user_id: Restrict results to meetings for specific user(s)
+        List of GranolaDocument objects
     """
-    if limit > 100:
-        limit = 100
-
     headers = get_auth_headers()
     url = 'https://api.granola.ai/v2/get-documents'
 
     payload = {'limit': limit, 'offset': offset, 'include_last_viewed_panel': False}
 
-    # Add list filter if provided (server-side filtering)
     if list_id:
         payload['list_id'] = list_id
 
@@ -136,22 +118,71 @@ async def search_meetings(
     response.raise_for_status()
 
     data = DocumentsResponse.model_validate(response.json())
+    return data.docs
 
-    # Convert to list items
-    meetings = []
-    for doc in data.docs:
-        # Apply search filter if query provided
-        if query:
+
+# =============================================================================
+# MCP Tools
+# =============================================================================
+
+
+@mcp.tool(annotations=ToolAnnotations(title='List Meetings', readOnlyHint=True))
+async def list_meetings(
+    title_contains: str | None = None,
+    case_sensitive: bool = False,
+    list_id: str | None = None,
+    limit: int = 20,
+) -> list[MeetingListItem]:
+    """
+    List Granola meetings with optional client-side title filtering.
+
+    Fetches meetings in batches of 40 (with caching) and optionally filters by title.
+    The Granola API does not support server-side search, so filtering is done client-side
+    by substring matching. Results are cached per pagination window for performance.
+
+    Args:
+        title_contains: Optional substring to filter by title. If None, returns all meetings.
+        case_sensitive: Whether title filtering should be case-sensitive (default: False)
+        list_id: Optional list ID to filter meetings by list (server-side filtering)
+        limit: Maximum number of meetings to return. Use 0 to return all matching meetings. (default: 20)
+
+    Returns:
+        List of meetings with id, title, date, and metadata
+    """
+
+    async def document_generator():
+        """Async generator that yields documents in batches of 40."""
+        offset = 0
+        batch_size = 40
+        while True:
+            batch = await _get_documents_cached(
+                limit=batch_size, offset=offset, list_id=list_id
+            )
+            if not batch:
+                break
+            for doc in batch:
+                yield doc
+            offset += batch_size
+
+    results = []
+    async for doc in document_generator():
+        # Apply optional title filter
+        if title_contains:
             title = doc.title or ''
-            if query.lower() not in title.lower():
-                continue
+            if case_sensitive:
+                if title_contains not in title:
+                    continue
+            else:
+                if title_contains.lower() not in title.lower():
+                    continue
 
         # Count participants
         participant_count = 0
         if doc.people:
             participant_count = len(doc.people.attendees)
 
-        meetings.append(
+        # Convert to MeetingListItem
+        results.append(
             MeetingListItem(
                 id=doc.id,
                 title=doc.title or '(Untitled)',
@@ -162,7 +193,11 @@ async def search_meetings(
             )
         )
 
-    return meetings
+        # Check limit (0 = no limit)
+        if limit > 0 and len(results) >= limit:
+            break
+
+    return results
 
 
 @mcp.tool(

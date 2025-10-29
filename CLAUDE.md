@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is an MCP (Model Context Protocol) server that provides access to Granola meeting notes and transcripts via Claude Code. The server uses Granola's private, undocumented API (discovered through reverse engineering) to enable AI assistants to search meetings, download notes, access transcripts, and manage meeting data.
+This is an MCP (Model Context Protocol) server that provides access to Granola meeting notes and transcripts via Claude Code. The server uses Granola's private, undocumented API (discovered through reverse engineering) to enable AI assistants to list/filter meetings, download notes, access transcripts, and manage meeting data.
 
 **Important**: Granola's API is private and subject to change. The server uses strict Pydantic validation to fail fast when API changes occur.
+
+**Note on Search**: The Granola API does not support server-side search. The `list_meetings` tool performs client-side title filtering with automatic pagination and caching for performance.
 
 ## Architecture
 
@@ -17,6 +19,7 @@ This is an MCP (Model Context Protocol) server that provides access to Granola m
 - Manages HTTP client (`httpx.AsyncClient`) and temp directory lifecycle via `lifespan` context manager
 - All MCP tools defined as `@mcp.tool` decorated async functions
 - Global state: `_http_client`, `_temp_dir`, `_export_dir`
+- Session-based caching with `aiocache` for API responses (cleared on server restart)
 
 **Data models** (`src/models.py`):
 - Strict Pydantic models with `extra='forbid'` and `strict=True` - fail fast on API changes
@@ -48,6 +51,10 @@ All requests require `Authorization: Bearer {access_token}` header.
 **Authentication**: OAuth tokens read from local Granola app storage - no credential management needed
 
 **Temp file management**: Downloads saved to `TemporaryDirectory` that auto-cleans on server shutdown
+
+**Caching with aiocache**: API responses cached in-memory using `@cached` decorator with session-based TTL (cleared on server restart). Cache keys automatically generated from function parameters `(limit, offset, list_id)`.
+
+**Async generator pattern**: `list_meetings` uses internal async generator to stream documents in batches of 40, enabling efficient filtering without loading all data into memory at once.
 
 **ProseMirror conversion**: Recursive tree traversal with depth tracking for nested list indentation
 
@@ -88,6 +95,20 @@ PY
 
 ## Key Implementation Details
 
+### Document Caching with aiocache
+
+The `_get_documents_cached()` private helper function uses `aiocache` to cache API responses:
+
+```python
+@cached(ttl=None, cache=Cache.MEMORY)
+async def _get_documents_cached(limit: int, offset: int, list_id: str | None = None) -> list:
+```
+
+- **Cache key**: Automatically generated from `(limit, offset, list_id)` parameters
+- **TTL**: `None` (session-based - cache persists until MCP server restart)
+- **Storage**: In-memory (`Cache.MEMORY`)
+- **Batch size**: Tools fetch in batches of 40 to balance API efficiency and cache granularity
+
 ### ProseMirror to Markdown Conversion
 
 The `prosemirror_to_markdown()` function handles recursive conversion with these node types:
@@ -107,10 +128,19 @@ All download tools follow this pattern:
 5. Calculate metadata (word count, sections, duration, etc.)
 6. Write to temp file and return result with metadata
 
-### Meeting Search vs. Batch Retrieval
+### Meeting Listing vs. Batch Retrieval
 
-- `search_meetings()`: Supports pagination, title filtering, list filtering - for discovery
-- `get_meetings()`: Takes list of IDs and fetches in batch - for fetching specific meetings after discovery
+**Important**: The Granola API does not support server-side search. The `list_meetings` tool performs client-side filtering.
+
+- `list_meetings()`: Lists meetings with optional client-side title filtering. Fetches documents in batches of 40 (cached) and filters by title substring (case-insensitive by default). Supports:
+  - `title_contains`: Optional substring filter
+  - `case_sensitive`: Toggle for case-sensitive matching
+  - `list_id`: Server-side list filter
+  - `limit`: Max results to return (0 = all)
+  - No offset parameter - always starts from beginning and accumulates results
+
+- `get_meetings()`: Takes list of IDs and fetches in batch - for fetching specific meetings by ID after discovery
+
 - Pattern: Use `get_meeting_lists()` → `get_meetings(document_ids)` to fetch all meetings in a collection
 
 ### Delete/Undelete Implementation
