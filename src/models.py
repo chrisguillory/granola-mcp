@@ -25,7 +25,7 @@ class PersonDetails(BaseModel):
 
 
 class CompanyDetails(BaseModel):
-    pass  # Empty but structured
+    name: str | None = None  # Can have name field
 
 
 class PersonInfo(BaseModel):
@@ -108,6 +108,8 @@ class GoogleCalendarEvent(BaseModel):
     attachments: list | None = None
     recurringEventId: str | None = None
     originalStartTime: dict | None = None
+    guestsCanSeeOtherGuests: bool | None = None
+    extendedProperties: dict | None = None
 
 
 class ProseMirrorAttrs(BaseModel):
@@ -168,7 +170,7 @@ class GranolaDocument(BaseModel):
     creation_source: str
     subscription_plan_id: str
     privacy_mode_enabled: bool
-    workspace_id: str
+    workspace_id: str | None
     sharing_link_visibility: str
 
     # Nullable fields (can be None)

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__granola__search_meetings",
+      "mcp__granola__get_meeting_lists",
+      "mcp__granola__download_note",
+      "Read(//var/folders/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
