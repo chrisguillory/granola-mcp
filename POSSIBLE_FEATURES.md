@@ -1,7 +1,7 @@
 # Possible Future Features for Granola MCP Server
 
-**Last Updated:** October 28, 2025
-**Source:** Perplexity research on Granola.ai reverse engineering and feature analysis
+**Last Updated:** October 29, 2025
+**Source:** Proxyman traffic captures and Perplexity research on Granola.ai reverse engineering
 
 ---
 
@@ -23,20 +23,21 @@ Granola's API is completely undocumented and private. All endpoints in this MCP 
 
 ### Implemented Endpoints
 
-#### 1. `/v2/get-documents` (Search/Filter)
+#### 1. `/v2/get-documents` (List/Filter)
 **Method:** POST
-**Purpose:** Search and filter meetings with pagination
-**Implemented As:** `search_meetings()`
+**Purpose:** List and filter meetings with pagination
+**Implemented As:** `list_meetings()`
 
 **Request Parameters:**
 - `limit` (int) - Max results to return
 - `offset` (int) - Pagination offset
 - `id` (str) - Get specific document by ID (efficient single-document fetch)
 - `list_id` (str) - Filter by meeting list (server-side filtering)
-- `query` (str) - Text search (client-side filtered in our implementation)
 - `include_last_viewed_panel` (bool) - Include last viewed panel data
 
 **Response:** `{docs: [GranolaDocument...], deleted: [str...]}`
+
+**Note:** API does not support server-side search. `list_meetings()` implements client-side title filtering with caching.
 
 ---
 
@@ -133,20 +134,211 @@ Granola's API is completely undocumented and private. All endpoints in this MCP 
 
 ### Discovered But Not Implemented
 
-#### 7. `/v1/get-entity-batch` (Chat Messages)
+#### 7. `/v1/set-person`
 **Method:** POST
-**Purpose:** Fetch chat messages/interactions with Granola's AI
 
 **Request Parameters:**
-- `entity_type` (str) - Entity type (e.g., "chat_message")
-- `entity_ids` (list[str]) - Array of entity IDs
+```json
+{
+  "id": "user-uuid",
+  "created_at": "2025-05-29T22:39:03.024Z",
+  "user_id": "user-uuid",
+  "name": "string",
+  "job_title": "string | null",
+  "company_name": "string",
+  "company_description": "string",
+  "links": [],
+  "email": "string",
+  "avatar": "string (url)",
+  "favorite_panel_templates": [{"template_id": "uuid"}, ...],
+  "user_type": "string",
+  "subscription_name": "string"
+}
+```
 
-**Response:** `{data: [{id, data: {thread_id, role, turn_index, ...}}], entity_type: str}`
+**Curl Example:**
+```bash
+curl 'https://api.granola.ai/v1/set-person' \
+  -X POST \
+  -H 'Authorization: Bearer [TOKEN_REDACTED]' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Client-Version: 6.289.0' \
+  -H 'X-Granola-Device-Id: [DEVICE_ID_REDACTED]' \
+  -H 'X-Granola-Workspace-Id: [WORKSPACE_ID_REDACTED]' \
+  --data-raw '{"id":"user-id","name":"...",...}'
+```
 
-**Why Not Implemented:**
-- Returns internal AI chat interactions, not core meeting data
-- Low value for MCP server use case
-- User can chat with Claude directly via MCP
+---
+
+#### 8. `/v1/get-feature-flags`
+**Method:** POST
+
+**Request Parameters:**
+```json
+{
+  "force_defaults": false
+}
+```
+
+**Curl Example:**
+```bash
+curl 'https://api.granola.ai/v1/get-feature-flags' \
+  -X POST \
+  -H 'Authorization: Bearer [TOKEN_REDACTED]' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Client-Version: 6.289.0' \
+  -H 'X-Granola-Device-Id: [DEVICE_ID_REDACTED]' \
+  -H 'X-Granola-Workspace-Id: [WORKSPACE_ID_REDACTED]' \
+  --data-raw '{"force_defaults":false}'
+```
+
+---
+
+#### 9. `/v1/get-people`
+**Method:** POST
+
+**Request Parameters:** None (empty POST body)
+
+**Curl Example:**
+```bash
+curl 'https://api.granola.ai/v1/get-people' \
+  -X POST \
+  -H 'Authorization: Bearer [TOKEN_REDACTED]' \
+  -H 'X-Client-Version: 6.289.0' \
+  -H 'X-Granola-Device-Id: [DEVICE_ID_REDACTED]' \
+  -H 'X-Granola-Workspace-Id: [WORKSPACE_ID_REDACTED]'
+```
+
+---
+
+#### 10. `/v1/get-attio-integration`
+**Method:** POST
+
+**Request Parameters:** None (empty POST body)
+
+**Curl Example:**
+```bash
+curl 'https://api.granola.ai/v1/get-attio-integration' \
+  -X POST \
+  -H 'Authorization: Bearer [TOKEN_REDACTED]' \
+  -H 'X-Client-Version: 6.289.0' \
+  -H 'X-Granola-Device-Id: [DEVICE_ID_REDACTED]' \
+  -H 'X-Granola-Workspace-Id: [WORKSPACE_ID_REDACTED]'
+```
+
+---
+
+#### 11. `/v1/get-workspaces`
+**Method:** POST
+
+**Request Parameters:**
+```json
+{}
+```
+
+**Curl Example:**
+```bash
+curl 'https://api.granola.ai/v1/get-workspaces' \
+  -X POST \
+  -H 'Authorization: Bearer [TOKEN_REDACTED]' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Client-Version: 6.289.0' \
+  -H 'X-Granola-Device-Id: [DEVICE_ID_REDACTED]' \
+  -H 'X-Granola-Workspace-Id: [WORKSPACE_ID_REDACTED]' \
+  --data-raw '{}'
+```
+
+---
+
+#### 12. `/v1/get-recipes`
+**Method:** POST
+
+**Request Parameters:** None (empty POST body)
+
+**Curl Example:**
+```bash
+curl 'https://api.granola.ai/v1/get-recipes' \
+  -X POST \
+  -H 'Authorization: Bearer [TOKEN_REDACTED]' \
+  -H 'X-Client-Version: 6.289.0' \
+  -H 'X-Granola-Device-Id: [DEVICE_ID_REDACTED]' \
+  -H 'X-Granola-Workspace-Id: [WORKSPACE_ID_REDACTED]'
+```
+
+---
+
+#### 13. `/v1/get-current-subscription`
+**Method:** POST
+
+**Request Parameters:**
+```json
+{
+  "include_stripe_data": false
+}
+```
+
+**Curl Example:**
+```bash
+curl 'https://api.granola.ai/v1/get-current-subscription' \
+  -X POST \
+  -H 'Authorization: Bearer [TOKEN_REDACTED]' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Client-Version: 6.289.0' \
+  -H 'X-Granola-Device-Id: [DEVICE_ID_REDACTED]' \
+  -H 'X-Granola-Workspace-Id: [WORKSPACE_ID_REDACTED]' \
+  --data-raw '{"include_stripe_data":false}'
+```
+
+---
+
+#### 14. `/v1/get-workspace-members`
+**Method:** POST
+
+**Request Parameters:**
+```json
+{
+  "workspace_id": "workspace-uuid"
+}
+```
+
+**Curl Example:**
+```bash
+curl 'https://api.granola.ai/v1/get-workspace-members' \
+  -X POST \
+  -H 'Authorization: Bearer [TOKEN_REDACTED]' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Client-Version: 6.289.0' \
+  -H 'X-Granola-Device-Id: [DEVICE_ID_REDACTED]' \
+  -H 'X-Granola-Workspace-Id: [WORKSPACE_ID_REDACTED]' \
+  --data-raw '{"workspace_id":"workspace-uuid"}'
+```
+
+---
+
+#### 15. `/v1/get-entity-batch`
+**Method:** POST
+
+**Request Parameters:**
+```json
+{
+  "entity_type": "string",
+  "entity_ids": ["id1", "id2", ...]
+}
+```
+
+**Response:** `{data: [{id, data: {...}}], entity_type: str}`
+
+**Curl Example:**
+```bash
+curl 'https://api.granola.ai/v1/get-entity-batch' \
+  -X POST \
+  -H 'Authorization: Bearer [TOKEN_REDACTED]' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Client-Version: 6.289.0' \
+  -H 'X-Granola-Device-Id: [DEVICE_ID_REDACTED]' \
+  -H 'X-Granola-Workspace-Id: [WORKSPACE_ID_REDACTED]' \
+  --data-raw '{"entity_type":"chat_message","entity_ids":[...]}'
+```
 
 ---
 
@@ -162,8 +354,10 @@ curl 'https://api.granola.ai/v1/{endpoint}' \
 
 **Headers Used:**
 - `Authorization: Bearer {access_token}` (required)
-- `Content-Type: application/json` (required)
-- `X-Granola-Workspace-Id` (optional, seen in traffic but not required)
+- `Content-Type: application/json` (required for POST with body)
+- `X-Client-Version: 6.289.0` (observed, not required)
+- `X-Granola-Device-Id: {device_hash}` (observed, not required)
+- `X-Granola-Workspace-Id: {workspace_uuid}` (observed, not required)
 
 ---
 
@@ -189,12 +383,13 @@ curl 'https://api.granola.ai/v1/{endpoint}' \
 ## Current Implementation Status
 
 ### ✅ Implemented (Core Read Operations)
-- **Search & Discovery:** `search_meetings(query, list_id, limit, offset)` with server-side filtering
+- **List & Discovery:** `list_meetings(title_contains, case_sensitive, list_id, limit)` with client-side filtering and caching
 - **Lists:** `get_meeting_lists()` - All collections with document IDs
 - **Batch Retrieval:** `get_meetings(document_ids)` - Fetch multiple meetings at once
 - **AI Notes:** `download_note()` - AI-generated meeting summaries
 - **Private Notes:** `download_private_notes()` - User's personal notes
 - **Transcripts:** `download_transcript()` - Full conversation with speaker labels
+- **Delete/Undelete:** `delete_meeting()` and `undelete_meeting()` - Soft delete meetings
 
 All download tools produce byte-for-byte identical markdown to Granola's official export.
 
