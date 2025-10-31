@@ -5,6 +5,7 @@
 #   "aiocache",
 #   "fastmcp>=2.12.5",
 #   "httpx",
+#   "markdownify",
 #   "pydantic>=2.0",
 #   "pydevd-pycharm~=241.18034.82",
 # ]
@@ -26,6 +27,7 @@ from pathlib import Path
 
 import httpx
 from aiocache import Cache, cached
+import markdownify
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.types import ToolAnnotations
 
@@ -269,8 +271,18 @@ async def download_note(
         # Fall back to first panel
         summary_panel = panels[0]
 
-    # Convert ProseMirror to Markdown
-    notes_markdown = prosemirror_to_markdown(summary_panel.content)
+    # Convert content to Markdown (handle both ProseMirror JSON and HTML)
+    if isinstance(summary_panel.content, str):
+        # Content is HTML string - convert to Markdown matching Granola's format
+        notes_markdown = markdownify.markdownify(
+            summary_panel.content,
+            heading_style='ATX',
+            bullets='-',  # Use '-' for all bullets (Granola style)
+            default_title=True,  # Use [URL](URL) format for links
+        ).strip()
+    else:
+        # Content is ProseMirror JSON dict - use existing converter
+        notes_markdown = prosemirror_to_markdown(summary_panel.content)
 
     # Format date from created_at
     from datetime import datetime

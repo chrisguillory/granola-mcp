@@ -269,7 +269,7 @@ class DocumentPanel(BaseModel):
     created_at: str
     title: str
     document_id: str
-    content: dict  # ProseMirror JSON
+    content: dict | str  # Can be ProseMirror JSON (dict) or HTML (str)
     template_slug: str | None = None
     deleted_at: str | None = None
     last_viewed_at: str | None = None
