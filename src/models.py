@@ -45,14 +45,23 @@ class Conferencing(BaseModel):
     title: str
 
 
+class ManualAttendeeEdit(BaseModel):
+    """Manual edit to meeting attendee list."""
+
+    action: str  # e.g., "add"
+    attendee_name: str
+    attendee_email: str
+
+
 class People(BaseModel):
-    title: str
+    title: str | None = None  # Optional in some documents
     creator: Creator
     attendees: list
-    created_at: str
+    created_at: str | None = None  # Optional in some documents
     sharing_link_visibility: str | None = None
     url: str | None = None
     conferencing: Conferencing | None = None
+    manual_attendee_edits: list[ManualAttendeeEdit] | None = None  # New field
 
 
 class GoogleCalendarTime(BaseModel):
