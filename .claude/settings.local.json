@@ -4,7 +4,8 @@
       "mcp__granola__search_meetings",
       "mcp__granola__get_meeting_lists",
       "mcp__granola__download_note",
-      "Read(//var/folders/**)"
+      "Read(//var/folders/**)",
+      "mcp__perplexity__perplexity_ask"
     ],
     "deny": [],
     "ask": []
