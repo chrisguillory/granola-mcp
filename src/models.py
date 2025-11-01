@@ -21,7 +21,8 @@ class PersonName(BaseModel):
 
 class PersonDetails(BaseModel):
     name: PersonName
-    avatar: str
+    avatar: str | None = None  # Avatar is optional for attendees
+    jobTitle: str | None = None  # Job title is optional
 
 
 class CompanyDetails(BaseModel):
@@ -53,10 +54,18 @@ class ManualAttendeeEdit(BaseModel):
     attendee_email: str
 
 
+class Attendee(BaseModel):
+    """Meeting attendee with same structure as Creator."""
+
+    name: str | None = None  # Some attendees only have email
+    email: str
+    details: PersonInfo | None = None  # May be partial/missing for some attendees
+
+
 class People(BaseModel):
     title: str | None = None  # Optional in some documents
     creator: Creator
-    attendees: list
+    attendees: list[Attendee]
     created_at: str | None = None  # Optional in some documents
     sharing_link_visibility: str | None = None
     url: str | None = None
@@ -230,6 +239,15 @@ class BatchDocumentsResponse(BaseModel):
 # Simplified models for tool responses
 
 
+class ParticipantInfo(BaseModel):
+    """Participant information for meeting list items."""
+
+    name: str
+    email: str
+    company_name: str | None = None  # Extracted from details.company.name
+    job_title: str | None = None  # Extracted from details.person.jobTitle
+
+
 class MeetingListItem(BaseModel):
     """Simplified meeting info for list views."""
 
@@ -239,6 +257,7 @@ class MeetingListItem(BaseModel):
     type: str | None
     has_notes: bool
     participant_count: int
+    participants: list[ParticipantInfo]
 
 
 class DownloadResult(BaseModel):
@@ -341,3 +360,99 @@ class DeleteMeetingResult(BaseModel):
 
     success: bool
     document_id: str
+
+
+class WorkspaceData(BaseModel):
+    """Workspace data structure from API."""
+
+    workspace_id: str
+    slug: str
+    display_name: str
+    is_locked: bool
+    created_at: str
+    updated_at: str
+    privacy_mode_enabled: bool
+    sharing_link_visibility: str | None
+    transcript_retention_hours: int | None
+    transcript_retention_hours_updated_at: str | None
+    logo_url: str | None
+    company_type: str | None
+    deleted_at: str | None
+    allow_moving_notes: bool
+    pre_call_email_enabled: bool
+    affirmative_consent_enabled: bool
+    in_meeting_copy_consent_message_banner_enabled: bool
+    calendar_addon_api_key: str | None
+    allow_transfer_notes: bool
+    discoverable: bool
+
+
+class WorkspaceItem(BaseModel):
+    """Workspace item with role and plan type."""
+
+    workspace: WorkspaceData
+    role: str  # e.g., "admin", "member"
+    plan_type: str  # e.g., "free", "pro"
+
+
+class WorkspacesResponse(BaseModel):
+    """API response from get-workspaces endpoint."""
+
+    workspaces: list[WorkspaceItem]
+
+
+class WorkspaceInfo(BaseModel):
+    """Simplified workspace info for MCP tool results."""
+
+    workspace_id: str
+    display_name: str
+    slug: str
+    is_locked: bool
+    logo_url: str | None
+    created_at: str
+    role: str
+    plan_type: str
+    privacy_mode_enabled: bool
+
+
+class ListWorkspacesResult(BaseModel):
+    """Result from list_workspaces tool."""
+
+    workspaces: list[WorkspaceInfo]
+    total_count: int
+
+
+class CreateWorkspaceResult(BaseModel):
+    """Result from create_workspace tool."""
+
+    workspace_id: str
+    display_name: str
+    slug: str
+    logo_url: str | None
+    created_at: str
+    has_business_trial: bool
+
+
+class DeleteWorkspaceResult(BaseModel):
+    """Result from delete_workspace tool."""
+
+    workspace_id: str
+    deleted_at: str
+
+
+# Meeting Update Models
+
+
+class AttendeeUpdate(BaseModel):
+    """Attendee information for updates."""
+
+    name: str
+    email: str
+    job_title: str | None = None
+    company_name: str | None = None
+
+
+class UpdateMeetingResult(BaseModel):
+    """Result from /v1/update-document API."""
+
+    id: str

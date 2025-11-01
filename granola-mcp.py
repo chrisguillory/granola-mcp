@@ -39,17 +39,25 @@ from src.helpers import (
 )
 from src.logging import DualLogger
 from src.models import (
+    AttendeeUpdate,
     BatchDocumentsResponse,
+    CreateWorkspaceResult,
     DeleteMeetingResult,
+    DeleteWorkspaceResult,
     DocumentPanel,
     DocumentsResponse,
+    ListWorkspacesResult,
     MeetingList,
     MeetingListItem,
     MeetingListsResult,
     NoteDownloadResult,
+    ParticipantInfo,
     PrivateNoteDownloadResult,
     TranscriptDownloadResult,
     TranscriptSegment,
+    UpdateMeetingResult,
+    WorkspaceInfo,
+    WorkspacesResponse,
 )
 
 # =============================================================================
@@ -130,23 +138,29 @@ async def _get_documents_cached(
 
 @mcp.tool(annotations=ToolAnnotations(title='List Meetings', readOnlyHint=True))
 async def list_meetings(
+    # Filter parameters
     title_contains: str | None = None,
     case_sensitive: bool = False,
     list_id: str | None = None,
+    created_at_gte: str | None = None,
+    created_at_lte: str | None = None,
+    # Control parameters
     limit: int = 20,
 ) -> list[MeetingListItem]:
     """
-    List Granola meetings with optional client-side title filtering.
+    List Granola meetings with optional client-side filtering.
 
-    Fetches meetings in batches of 40 (with caching) and optionally filters by title.
-    The Granola API does not support server-side search, so filtering is done client-side
-    by substring matching. Results are cached per pagination window for performance.
+    Fetches meetings in batches of 40 (with caching) and filters by title and/or date.
+    The Granola API does not support server-side search, so filtering is done client-side.
+    Results are cached per pagination window for performance.
 
     Args:
-        title_contains: Optional substring to filter by title. If None, returns all meetings.
+        title_contains: Optional substring to filter by title
         case_sensitive: Whether title filtering should be case-sensitive (default: False)
         list_id: Optional list ID to filter meetings by list (server-side filtering)
-        limit: Maximum number of meetings to return. Use 0 to return all matching meetings. (default: 20)
+        limit: Maximum number of meetings to return. Use 0 to return all (default: 20)
+        created_at_gte: Filter meetings created on or after this date (ISO 8601: "YYYY-MM-DD")
+        created_at_lte: Filter meetings created on or before this date (ISO 8601: "YYYY-MM-DD")
 
     Returns:
         List of meetings with id, title, date, and metadata
@@ -178,10 +192,53 @@ async def list_meetings(
                 if title_contains.lower() not in title.lower():
                     continue
 
-        # Count participants
+        # Apply optional date filters
+        if created_at_gte or created_at_lte:
+            from datetime import datetime
+
+            created = datetime.fromisoformat(doc.created_at.replace('Z', '+00:00'))
+
+            if created_at_gte:
+                filter_start = datetime.fromisoformat(
+                    created_at_gte + 'T00:00:00+00:00'
+                )
+                if created < filter_start:
+                    continue
+
+            if created_at_lte:
+                filter_end = datetime.fromisoformat(created_at_lte + 'T23:59:59+00:00')
+                if created > filter_end:
+                    continue
+
+        # Extract participant information
         participant_count = 0
+        participants = []
         if doc.people:
             participant_count = len(doc.people.attendees)
+            for attendee in doc.people.attendees:
+                # Extract company name from details if available
+                company_name = None
+                if attendee.details and attendee.details.company.name:
+                    company_name = attendee.details.company.name
+
+                # Extract job title from details if available
+                job_title = None
+                if attendee.details and attendee.details.person.jobTitle:
+                    job_title = attendee.details.person.jobTitle
+
+                # Extract name - try top-level first, then details.person.name.fullName
+                name = attendee.name
+                if not name and attendee.details and attendee.details.person:
+                    name = attendee.details.person.name.fullName
+
+                participants.append(
+                    {
+                        'name': name,
+                        'email': attendee.email,
+                        'company_name': company_name,
+                        'job_title': job_title,
+                    }
+                )
 
         # Convert to MeetingListItem
         results.append(
@@ -192,6 +249,7 @@ async def list_meetings(
                 type=doc.type,
                 has_notes=bool(doc.notes or doc.notes_markdown),
                 participant_count=participant_count,
+                participants=participants,
             )
         )
 
@@ -612,10 +670,35 @@ async def get_meetings(document_ids: list[str], ctx: Context) -> list[MeetingLis
     # Convert to list items
     meetings = []
     for doc in data.docs:
-        # Count participants
+        # Extract participant information
         participant_count = 0
+        participants = []
         if doc.people:
             participant_count = len(doc.people.attendees)
+            for attendee in doc.people.attendees:
+                # Extract company name from details if available
+                company_name = None
+                if attendee.details and attendee.details.company.name:
+                    company_name = attendee.details.company.name
+
+                # Extract job title from details if available
+                job_title = None
+                if attendee.details and attendee.details.person.jobTitle:
+                    job_title = attendee.details.person.jobTitle
+
+                # Extract name - try top-level first, then details.person.name.fullName
+                name = attendee.name
+                if not name and attendee.details and attendee.details.person:
+                    name = attendee.details.person.name.fullName
+
+                participants.append(
+                    {
+                        'name': name,
+                        'email': attendee.email,
+                        'company_name': company_name,
+                        'job_title': job_title,
+                    }
+                )
 
         meetings.append(
             MeetingListItem(
@@ -625,6 +708,7 @@ async def get_meetings(document_ids: list[str], ctx: Context) -> list[MeetingLis
                 type=doc.type,
                 has_notes=bool(doc.notes or doc.notes_markdown),
                 participant_count=participant_count,
+                participants=participants,
             )
         )
 
@@ -712,6 +796,102 @@ async def undelete_meeting(document_id: str, ctx: Context) -> DeleteMeetingResul
     return DeleteMeetingResult(success=True, document_id=document_id)
 
 
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title='Update Meeting', readOnlyHint=False, idempotentHint=True
+    )
+)
+async def update_meeting(
+    ctx: Context,
+    document_id: str,
+    title: str | None = None,
+    attendees: list[AttendeeUpdate] | None = None,
+) -> UpdateMeetingResult:
+    """
+    Update meeting fields (title, attendees).
+
+    Semantics: None = no change, [] = clear, [...] = replace
+
+    Args:
+        document_id: Meeting ID
+        title: New title (optional)
+        attendees: New attendee list (optional)
+
+    Returns:
+        UpdateMeetingResult with document ID
+    """
+    logger = DualLogger(ctx)
+    await logger.info(f'Updating meeting {document_id}')
+
+    headers = get_auth_headers()
+    url = 'https://api.granola.ai/v1/update-document'
+
+    # Build payload starting with document ID
+    payload = {'id': document_id}
+
+    # Handle title update (simple - just add to payload)
+    if title is not None:
+        payload['title'] = title
+        await logger.info(f'  Updating title to: {title}')
+
+    # Handle attendees update (complex - must preserve people object)
+    if attendees is not None:
+        await logger.info(f'  Updating attendees ({len(attendees)} attendees)')
+
+        # Fetch current document to get existing people object
+        get_url = 'https://api.granola.ai/v2/get-documents'
+        get_response = await _http_client.post(
+            get_url, json={'id': document_id}, headers=headers
+        )
+        get_response.raise_for_status()
+        doc = get_response.json()['docs'][0]
+        people = doc.get('people', {})
+
+        # Preserve existing fields: creator, title, created_at, sharing_link_visibility
+        # Update: attendees, manual_attendee_edits
+
+        # Build attendees array with proper nested structure
+        people['attendees'] = [
+            {
+                'name': a.name,
+                'email': a.email,
+                'details': {
+                    'person': {
+                        'name': {'fullName': a.name},
+                        **(
+                            {'jobTitle': a.job_title} if a.job_title is not None else {}
+                        ),
+                    },
+                    'company': {
+                        **(
+                            {'name': a.company_name}
+                            if a.company_name is not None
+                            else {}
+                        )
+                    },
+                },
+            }
+            for a in attendees
+        ]
+
+        # Build manual_attendee_edits array
+        people['manual_attendee_edits'] = [
+            {'action': 'add', 'attendee_name': a.name, 'attendee_email': a.email}
+            for a in attendees
+        ]
+
+        payload['people'] = people
+
+    # Send update request
+    response = await _http_client.post(url, json=payload, headers=headers)
+    response.raise_for_status()
+
+    result = UpdateMeetingResult.model_validate(response.json())
+    await logger.info(f'Successfully updated meeting {result.id}')
+
+    return result
+
+
 @mcp.tool(annotations=ToolAnnotations(title='List Deleted Meetings', readOnlyHint=True))
 async def list_deleted_meetings(ctx: Context) -> list[str]:
     """
@@ -748,6 +928,146 @@ async def list_deleted_meetings(ctx: Context) -> list[str]:
     await logger.info(f'Found {len(data.deleted)} deleted meetings')
 
     return data.deleted
+
+
+# =============================================================================
+# Workspace Management Tools
+# =============================================================================
+
+
+@mcp.tool(annotations=ToolAnnotations(title='List Workspaces', readOnlyHint=True))
+async def list_workspaces(ctx: Context) -> ListWorkspacesResult:
+    """
+    List all workspaces for the user.
+
+    Returns a list of workspaces with their basic information including ID,
+    display name, role, plan type, and settings.
+
+    Args:
+        ctx: MCP context
+
+    Returns:
+        ListWorkspacesResult with workspaces list and total count
+    """
+    logger = DualLogger(ctx)
+    await logger.info('Fetching workspaces')
+
+    headers = get_auth_headers()
+    url = 'https://api.granola.ai/v1/get-workspaces'
+
+    payload = {}
+
+    response = await _http_client.post(url, json=payload, headers=headers)
+    response.raise_for_status()
+
+    data = WorkspacesResponse.model_validate(response.json())
+
+    # Convert to simplified workspace info
+    workspaces = []
+    for item in data.workspaces:
+        workspace_info = WorkspaceInfo(
+            workspace_id=item.workspace.workspace_id,
+            display_name=item.workspace.display_name,
+            slug=item.workspace.slug,
+            is_locked=item.workspace.is_locked,
+            logo_url=item.workspace.logo_url,
+            created_at=item.workspace.created_at,
+            role=item.role,
+            plan_type=item.plan_type,
+            privacy_mode_enabled=item.workspace.privacy_mode_enabled,
+        )
+        workspaces.append(workspace_info)
+
+    await logger.info(f'Found {len(workspaces)} workspaces')
+
+    return ListWorkspacesResult(workspaces=workspaces, total_count=len(workspaces))
+
+
+@mcp.tool()
+async def create_workspace(
+    ctx: Context,
+    display_name: str,
+    is_locked: bool = False,
+    logo_url: str | None = None,
+    should_migrate_orphaned_entities: bool = False,
+    migrate_subscription: bool = False,
+) -> CreateWorkspaceResult:
+    """
+    Create a new workspace.
+
+    Creates a new workspace with the specified settings. This is a write operation
+    that creates persistent data in the user's account.
+
+    Args:
+        ctx: MCP context
+        display_name: Name for the new workspace
+        is_locked: Whether workspace is locked (default: False)
+        logo_url: Optional URL for workspace logo
+        should_migrate_orphaned_entities: Migrate orphaned entities (default: False)
+        migrate_subscription: Migrate subscription (default: False)
+
+    Returns:
+        CreateWorkspaceResult with new workspace information
+    """
+    logger = DualLogger(ctx)
+    await logger.info(f'Creating workspace: {display_name}')
+
+    headers = get_auth_headers()
+    url = 'https://api.granola.ai/v2/create-workspace'
+
+    payload = {
+        'display_name': display_name,
+        'is_locked': is_locked,
+        'logo_url': logo_url,
+        'should_migrate_orphaned_entities': should_migrate_orphaned_entities,
+        'migrate_subscription': migrate_subscription,
+    }
+
+    response = await _http_client.post(url, json=payload, headers=headers)
+    response.raise_for_status()
+
+    data = response.json()
+    result = CreateWorkspaceResult.model_validate(data)
+
+    await logger.info(f'Created workspace: {result.workspace_id}')
+
+    return result
+
+
+@mcp.tool()
+async def delete_workspace(ctx: Context, workspace_id: str) -> DeleteWorkspaceResult:
+    """
+    Delete a workspace.
+
+    Deletes a workspace by setting its deleted_at timestamp. This is a soft delete
+    operation - the workspace data is retained but marked as deleted.
+
+    WARNING: This is a destructive operation. Use with caution.
+
+    Args:
+        ctx: MCP context
+        workspace_id: ID of the workspace to delete
+
+    Returns:
+        DeleteWorkspaceResult with workspace_id and deletion timestamp
+    """
+    logger = DualLogger(ctx)
+    await logger.info(f'Deleting workspace: {workspace_id}')
+
+    headers = get_auth_headers()
+    url = 'https://api.granola.ai/v1/delete-workspace'
+
+    payload = {'workspace_id': workspace_id}
+
+    response = await _http_client.post(url, json=payload, headers=headers)
+    response.raise_for_status()
+
+    data = response.json()
+    result = DeleteWorkspaceResult.model_validate(data)
+
+    await logger.info(f'Deleted workspace at: {result.deleted_at}')
+
+    return result
 
 
 # =============================================================================
