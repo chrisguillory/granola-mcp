@@ -146,6 +146,7 @@ async def list_meetings(
     created_at_lte: str | None = None,
     # Control parameters
     limit: int = 20,
+    include_participants: bool = False,
 ) -> list[MeetingListItem]:
     """
     List Granola meetings with optional client-side filtering.
@@ -161,6 +162,7 @@ async def list_meetings(
         limit: Maximum number of meetings to return. Use 0 to return all (default: 20)
         created_at_gte: Filter meetings created on or after this date (ISO 8601: "YYYY-MM-DD")
         created_at_lte: Filter meetings created on or before this date (ISO 8601: "YYYY-MM-DD")
+        include_participants: Include full participant details (default: False for efficiency)
 
     Returns:
         List of meetings with id, title, date, and metadata
@@ -210,11 +212,14 @@ async def list_meetings(
                 if created > filter_end:
                     continue
 
-        # Extract participant information
-        participant_count = 0
-        participants = []
         if doc.people:
             participant_count = len(doc.people.attendees)
+        else:
+            participant_count = 0
+
+        # Extract participant details
+        if include_participants and doc.people:
+            participants = []
             for attendee in doc.people.attendees:
                 # Extract company name from details if available
                 company_name = None
@@ -239,6 +244,8 @@ async def list_meetings(
                         'job_title': job_title,
                     }
                 )
+        else:
+            participants = None
 
         # Convert to MeetingListItem
         results.append(

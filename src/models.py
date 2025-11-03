@@ -17,12 +17,36 @@ class BaseModel(pydantic.BaseModel):
 
 class PersonName(BaseModel):
     fullName: str
+    givenName: str | None = None
+    familyName: str | None = None
+
+
+class LinkedInInfo(BaseModel):
+    """LinkedIn profile information."""
+
+    handle: str
+
+
+class TwitterInfo(BaseModel):
+    """Twitter profile information."""
+
+    handle: str
+
+
+class EmploymentInfo(BaseModel):
+    """Employment information."""
+
+    name: str | None = None  # Company name
+    title: str | None = None  # Job title
 
 
 class PersonDetails(BaseModel):
     name: PersonName
     avatar: str | None = None  # Avatar is optional for attendees
     jobTitle: str | None = None  # Job title is optional
+    linkedin: LinkedInInfo | None = None  # LinkedIn profile (enriched data)
+    twitter: TwitterInfo | None = None  # Twitter profile (enriched data)
+    employment: EmploymentInfo | None = None  # Employment info (enriched data)
 
 
 class CompanyDetails(BaseModel):
@@ -257,7 +281,9 @@ class MeetingListItem(BaseModel):
     type: str | None
     has_notes: bool
     participant_count: int
-    participants: list[ParticipantInfo]
+    participants: list[ParticipantInfo] | None = pydantic.Field(
+        default=None, exclude_if=lambda v: v is None
+    )
 
 
 class DownloadResult(BaseModel):

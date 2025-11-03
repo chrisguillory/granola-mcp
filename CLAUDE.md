@@ -81,6 +81,8 @@ claude mcp add --scope user --transport stdio granola -- uv run --script ~/grano
 uv run --script granola-mcp.py --debug --debug-host localhost --debug-port 5678
 ```
 
+**Testing**: After code changes, user must reconnect MCP server: `/mcp reconnect granola`
+
 ## Development Conventions
 
 ### Python Execution
