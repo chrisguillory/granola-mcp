@@ -121,21 +121,22 @@ class GoogleCalendarReminders(BaseModel):
 class GoogleCalendarEvent(BaseModel):
     id: str
     end: GoogleCalendarTime
-    etag: str
-    kind: str
     start: GoogleCalendarTime
     status: str
-    created: str
-    creator: GoogleCalendarCreator | None = None
     iCalUID: str
     summary: str
-    updated: str
     htmlLink: str
-    sequence: int | None = None
-    eventType: str
     organizer: GoogleCalendarOrganizer
-    reminders: GoogleCalendarReminders | None = None
     calendarId: str
+    # Fields that may be missing in some API responses
+    etag: str | None = None
+    kind: str | None = None
+    created: str | None = None
+    updated: str | None = None
+    eventType: str | None = None
+    creator: GoogleCalendarCreator | None = None
+    sequence: int | None = None
+    reminders: GoogleCalendarReminders | None = None
     # Optional fields
     primaryCalendar: bool | None = None
     location: str | None = None
