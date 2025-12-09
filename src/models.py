@@ -483,3 +483,15 @@ class UpdateMeetingResult(BaseModel):
     """Result from /v1/update-document API."""
 
     id: str
+
+
+# URL Resolution Models
+
+
+class ResolveUrlResult(BaseModel):
+    """Result from resolving a Granola URL to document ID."""
+
+    document_id: str
+    url_type: str  # "sharing" or "direct"
+    original_url: str
+    resolved_from_redirect: bool = False

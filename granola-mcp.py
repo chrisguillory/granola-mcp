@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -53,6 +54,7 @@ from src.models import (
     NoteDownloadResult,
     ParticipantInfo,
     PrivateNoteDownloadResult,
+    ResolveUrlResult,
     TranscriptDownloadResult,
     TranscriptSegment,
     UpdateMeetingResult,
@@ -97,6 +99,15 @@ mcp = FastMCP('granola', lifespan=lifespan)
 # Helper Functions
 # =============================================================================
 
+# Compiled regex for extracting document IDs from /d/{id} URLs
+_DOCUMENT_ID_PATTERN = re.compile(r'/d/([a-f0-9-]+)')
+
+
+def _extract_document_id(url: str) -> str | None:
+    """Extract document ID from a URL containing /d/{id} path."""
+    match = _DOCUMENT_ID_PATTERN.search(url)
+    return match.group(1) if match else None
+
 
 @cached(ttl=None, cache=Cache.MEMORY)
 async def _get_documents_cached(
@@ -129,6 +140,45 @@ async def _get_documents_cached(
 
     data = DocumentsResponse.model_validate(response.json())
     return data.docs
+
+
+@cached(ttl=86400, cache=Cache.MEMORY)  # 24 hour TTL - token mappings are stable
+async def _resolve_sharing_token(token: str) -> str:
+    """
+    Resolve a sharing token to document ID via HTTP redirect.
+
+    The /t/{token} URLs redirect to /d/{document_id} URLs.
+    Results are cached for 24 hours since mappings are stable.
+
+    Args:
+        token: Sharing token from /t/ URL
+
+    Returns:
+        Document ID
+
+    Raises:
+        ValueError: If token is invalid or redirect fails
+    """
+    url = f'https://notes.granola.ai/t/{token}'
+
+    response = await _http_client.get(
+        url,
+        follow_redirects=False,
+        timeout=10.0,
+    )
+
+    # Handle all 3xx redirects
+    if 300 <= response.status_code < 400:
+        location = response.headers.get('location', '')
+        document_id = _extract_document_id(location)
+        if document_id:
+            return document_id
+        raise ValueError(f'Unexpected redirect location: {location}')
+
+    if response.status_code == 404:
+        raise ValueError(f'Sharing token not found: {token}')
+
+    raise ValueError(f'Unexpected response status: {response.status_code}')
 
 
 # =============================================================================
@@ -1075,6 +1125,72 @@ async def delete_workspace(ctx: Context, workspace_id: str) -> DeleteWorkspaceRe
     await logger.info(f'Deleted workspace at: {result.deleted_at}')
 
     return result
+
+
+# =============================================================================
+# URL Resolution Tools
+# =============================================================================
+
+
+@mcp.tool(annotations=ToolAnnotations(title='Resolve Granola URL', readOnlyHint=True))
+async def resolve_url(url: str, ctx: Context) -> ResolveUrlResult:
+    """
+    Resolve a Granola URL to its document ID.
+
+    Use this tool when you have a Granola sharing link (/t/ URL).
+    Direct document links (/d/ URLs) are also supported.
+
+    Examples:
+    - https://notes.granola.ai/t/78b188bc-67af-46a1-949a-3148e537757c (sharing link)
+    - https://notes.granola.ai/d/65b5ed31-c881-4664-912d-2e54bc8bb63a (direct link)
+
+    Args:
+        url: Granola URL (https://notes.granola.ai/t/... or /d/...)
+        ctx: MCP context
+
+    Returns:
+        ResolveUrlResult with the document_id to use with other tools
+    """
+    logger = DualLogger(ctx)
+    await logger.info(f'Resolving URL: {url}')
+
+    # Validate URL format
+    if 'notes.granola.ai' not in url:
+        raise ValueError(
+            'Invalid Granola URL. Expected format: https://notes.granola.ai/t/... or /d/...'
+        )
+
+    # Check for /d/ (direct document link) - use shared helper
+    document_id = _extract_document_id(url)
+    if document_id:
+        await logger.info(f'Direct link - document ID: {document_id}')
+        return ResolveUrlResult(
+            document_id=document_id,
+            url_type='direct',
+            original_url=url,
+            resolved_from_redirect=False,
+        )
+
+    # Check for /t/ (sharing token link)
+    t_match = re.search(r'/t/([a-f0-9-]+)', url)
+    if t_match:
+        token = t_match.group(1)
+        await logger.info(f'Sharing link - resolving token: {token}')
+
+        # Resolve token to document ID via redirect
+        document_id = await _resolve_sharing_token(token)
+        await logger.info(f'Resolved to document ID: {document_id}')
+
+        return ResolveUrlResult(
+            document_id=document_id,
+            url_type='sharing',
+            original_url=url,
+            resolved_from_redirect=True,
+        )
+
+    raise ValueError(
+        f'Could not parse Granola URL. Expected /t/ or /d/ path in URL: {url}'
+    )
 
 
 # =============================================================================
