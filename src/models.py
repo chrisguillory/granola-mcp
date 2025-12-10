@@ -3,6 +3,8 @@
 Generated from actual API response analysis of 40 documents.
 """
 
+from __future__ import annotations
+
 import pydantic
 
 
@@ -47,15 +49,35 @@ class PersonDetails(BaseModel):
     linkedin: LinkedInInfo | None = None  # LinkedIn profile (enriched data)
     twitter: TwitterInfo | None = None  # Twitter profile (enriched data)
     employment: EmploymentInfo | None = None  # Employment info (enriched data)
+    location: str | None = None  # Location (enriched data)
 
 
 class CompanyDetails(BaseModel):
     name: str | None = None  # Can have name field
+    logo: str | None = None  # Company logo URL (enriched data)
+    domain: str | None = None  # Company domain (enriched data)
+    description: str | None = None  # Company description (enriched data)
+
+
+class GroupMember(BaseModel):
+    """Member of a group attendee."""
+
+    name: str
+    email: str
+    details: PersonInfo | None = None  # May contain nested person/company info
+
+
+class GroupDetails(BaseModel):
+    """Group attendee information."""
+
+    members: list[GroupMember]
+    isTooBig: bool
 
 
 class PersonInfo(BaseModel):
-    person: PersonDetails
-    company: CompanyDetails
+    person: PersonDetails | None = None  # May be None for group attendees
+    company: CompanyDetails | None = None  # May be None for group attendees
+    group: GroupDetails | None = None  # Present for group attendees
 
 
 class Creator(BaseModel):
@@ -246,6 +268,7 @@ class GranolaDocument(BaseModel):
     last_viewed_panel: LastViewedPanel | None = (
         None  # Only present when include_last_viewed_panel=True
     )
+    was_trashed: bool | None = None  # New field - indicates if document was previously trashed
 
 
 class DocumentsResponse(BaseModel):
