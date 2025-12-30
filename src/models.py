@@ -5,6 +5,8 @@ Generated from actual API response analysis of 40 documents.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pydantic
 
 
@@ -213,6 +215,7 @@ class LastViewedPanel(BaseModel):
     original_content: str | None = None
     suggested_questions: None = None
     generated_lines: list | None = None
+    ydoc_state: None = None  # Yjs collaborative editing state
 
 
 # Main document model
@@ -224,9 +227,9 @@ class GranolaDocument(BaseModel):
     # Required fields (always present and not null)
     id: str
     created_at: str
-    notes: Notes  # Often empty ProseMirror JSON for newer meetings
+    notes: Notes | None = None  # Can be None for some meetings
     user_id: str
-    notes_plain: str
+    notes_plain: str | None = None  # Can be None for some meetings
     transcribe: bool
     updated_at: str
     public: bool
@@ -268,7 +271,9 @@ class GranolaDocument(BaseModel):
     last_viewed_panel: LastViewedPanel | None = (
         None  # Only present when include_last_viewed_panel=True
     )
-    was_trashed: bool | None = None  # New field - indicates if document was previously trashed
+    was_trashed: bool | None = (
+        None  # New field - indicates if document was previously trashed
+    )
 
 
 class DocumentsResponse(BaseModel):
@@ -358,6 +363,7 @@ class DocumentPanel(BaseModel):
     suggested_questions: list | None = None
     generated_lines: list | None = None
     user_feedback: dict | None = None
+    ydoc_version: None = None  # Yjs collaborative editing version
 
 
 class NoteDownloadResult(BaseModel):
@@ -435,6 +441,12 @@ class WorkspaceData(BaseModel):
     calendar_addon_api_key: str | None
     allow_transfer_notes: bool
     discoverable: bool
+    chat_paste_enabled: bool
+    self_email_enabled: bool
+    pre_call_email_blocklist: Sequence[str]
+    pre_call_email_allowlist: Sequence[str]
+    pre_call_email_large_meeting_threshold: int
+    in_meeting_copy_consent_message_banner_message: str | None
 
 
 class WorkspaceItem(BaseModel):

@@ -162,10 +162,20 @@ Deletion is soft delete via timestamp:
 - Pydantic models for all API responses
 - Fail fast validation (no silent failures)
 
+## Fixing Validation Errors
+
+Validation errors from `extra='forbid'` are expected when the API evolves. The error gives you a starting point (field name, value, type), but don't just pattern-match to a fix.
+
+**Before changing models, re-read `src/models.py`** to understand existing patterns. Don't rely on memory.
+
+**Inspect the API** to understand the field: Is it always present? Can it be null? What does it represent? Use `src/helpers.py` for auth (`get_auth_token()`, `get_auth_headers()`) - the token lives in `~/Library/Application Support/Granola/supabase.json` nested as `workos_tokens` → `access_token`.
+
+**Reason about the type**: Consider nullability, semantic meaning, whether to model nested structures. For sequences, prefer `Sequence[T]` (immutable interface) over `list[T]`. The goal is understanding, not just silencing the error.
+
 ## Common Modifications
 
 **Adding a new tool**: Follow the pattern in existing tools - add `@mcp.tool` decorator, use `DualLogger` for logging, validate responses with Pydantic models, return structured result models.
 
-**Updating models**: When API changes, update Pydantic models in `src/models.py`. Strict validation will immediately catch mismatches.
+**Updating models**: When API changes, update Pydantic models in `src/models.py`. Strict validation will immediately catch mismatches. See "Fixing Validation Errors" above.
 
 **Adding API endpoint**: Add to helpers or main file, use `_http_client` for requests, add `get_auth_headers()` for authentication, validate response with new Pydantic model.
